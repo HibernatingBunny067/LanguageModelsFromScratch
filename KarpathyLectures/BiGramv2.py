@@ -2,22 +2,77 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from utils import get_batch,estimate_loss,custom_tokenizer
-torch.manual_seed(42)
 
-@dataclass
-class config:
-    batch_size = 8
-    window_size = 8
-    device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-    max_iters_training = 5000
-    lr = 1e-3
-    eval_iters = 300
-    data_path = r'data/tiny_shakespeare.txt'
+class causalAttention(nn.Module):
+    def __init__(self,config):
+        super().__init__()
+        assert config.embed % config.n_heads == 0
+        self.c_attn = nn.Linear(config.embed,3*config.embed,bias=False)
+        self.proj = nn.Linear(config.embed,config.embed,bias=False)
 
-tokenizer = custom_tokenizer(data_path=config.data_path)
-train_data,val_data = tokenizer.get_coded_data_split()
+        self.n_heads = config.n_heads
+        self.n_embed = config.embed
+    def forward(self,x):
+        B,T,C = x.shape
 
+        kqv = self.c_attn(x) ## x(B,T,C) -> kqv (B,T,3*C)
+
+        k,q,v = kqv.split(self.n_embed,dim=2) ## each matrix has dimension (B,T,C)
+
+        k = k.view(B,T,self.n_heads,C // self.n_heads).transpose(1,2) ## k(B,T,C) -> (B,T,n_heads,head_size) -> (B,n_heads,T,head_size)
+        q = q.view(B,T,self.n_heads,C // self.n_heads).transpose(1,2) ## q(B,T,C) -> (B,T,n_heads,head_size) -> (B,n_heads,T,head_size)
+        v = v.view(B,T,self.n_heads,C // self.n_heads).transpose(1,2) ## v(B,T,C) -> (B,T,n_heads,head_size) -> (B,n_heads,T,head_size)
+
+        ##attention calculation for each head we want (T,head_size) which we'll concatenate
+
+        wei = q @ k.transpose(-2,-1) * (k.shape[-1]**-0.5) ## wei: (B,n_heads,T,T)
+        trill = torch.tril(torch.ones(T,T,device=x.device)).view(1,1,T,T)
+        wei = wei.masked_fill(trill == 0,float('-inf'))
+
+        wei = F.softmax(wei,dim=-1)
+        
+        y = wei@v
+
+        y = y.transpose(1,2).contiguous().view(B,T,C)
+
+        out = self.proj(y)
+
+        return out
+
+
+
+class Head(nn.Module):
+    '''Single attention head
+        x: (batch_size,time_step,channels(embedding_dimesion))
+        key,query,value: (batch_size,head_size)
+        wei: (T,T)
+        v: (T,head_size)
+        out: (T,head_size)
+
+        Note: this is a single head, usually we use multiple heads (n = int(embedding_dim//head_size)) and use them in parallel
+    '''
+
+    def __init__(self,input_size,head_size):
+        super().__init__()
+        self.key = nn.Linear(input_size,head_size,bias=False)
+        self.query = nn.Linear(input_size,head_size,bias=False)
+        self.value = nn.Linear(input_size,head_size,bias=False)
+
+    def forward(self,x:torch.Tensor):
+        B,T,C = x.shape
+        k = self.key(x)
+        q = self.query(x)
+        v = self.value(x)
+
+        trill = torch.tril(torch.ones(T,T,device=x.device))
+        wei = q @ k.transpose(-2,-1) * (k.shape[-1])**(-0.5)
+        wei = wei.masked_fill(trill == 0,float('-inf'))
+
+        wei = F.softmax(wei,dim=-1)
+        
+        out = wei@v
+        return out 
+        
 
 class Bigram(nn.Module):
     def __init__(self,vocab_size):
@@ -46,24 +101,18 @@ class Bigram(nn.Module):
             idx = torch.cat([idx,idx_next],dim=1)
         return idx
 
-model = Bigram(tokenizer._size_())
-model.to(config.device)
+@dataclass
+class config:
+    embed = 256
+    n_heads = 16
 
-optimizer = torch.optim.AdamW(model.parameters(),lr=config.lr)
-
-print('Starting Training....')
-for iter in range(config.max_iters_training):
-
-    if iter% config.eval_iters == 0:
-        losses = estimate_loss(model,train_data,val_data,config.eval_iters,config.window_size,config.batch_size,config.device)
-        print(f'step {iter+1}: train loss: {losses['train']:.4f}, val loss: {losses['val']:.4f}')
-
-    X,y = get_batch(train_data,config.window_size,config.batch_size,config.device)
-    logits,loss = model(X,y)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-print("Trained model output:\n")
-context = torch.zeros((1,1),dtype=torch.long,device=config.device)
-print(tokenizer.decode(model.generate(context,500).squeeze(0).tolist()))
+if __name__ == '__main__':
+    x = torch.randn((4,8,config.embed),device='mps')
+    config = config
+    m = causalAttention(config=config).to('mps')
+    y=m(x)
+    assert x.shape == y.shape
+    print(print(1))
+    print(y.shape)
+    print(x.var())
+    print(y.var())
