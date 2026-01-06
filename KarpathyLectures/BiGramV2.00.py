@@ -3,6 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
 
+class FeedForward(nn.Module):
+    def __init__(self,config):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(config.embed,4*config.embed),
+            nn.ReLU(),
+            nn.Linear(4*config.embed,config.embed)
+        )
+    def forward(self,x):
+        return self.net(x)
+
 class causalAttention(nn.Module):
     def __init__(self,config):
         super().__init__()
@@ -108,7 +119,6 @@ class config:
 
 if __name__ == '__main__':
     x = torch.randn((4,8,config.embed),device='mps')
-    config = config
     m = causalAttention(config=config).to('mps')
     y=m(x)
     assert x.shape == y.shape
