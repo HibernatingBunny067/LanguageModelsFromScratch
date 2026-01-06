@@ -1,4 +1,5 @@
 import torch
+import math
 torch.manual_seed(42)
 
 def get_batch(data,context_window=8,batch_size=8,DEVICE='cpu'):
@@ -55,3 +56,17 @@ class custom_tokenizer():
         n = int(0.9*len(data_tensor))
         train,val = data_tensor[:n],data_tensor[n:]
         return train,val
+
+def get_lr(it,config):
+    # 1. Linear Warmup Phase
+    if it < config.warmup_iters:
+        return config.max_lr * (it + 1) / config.warmup_iters
+    
+    # 2. If we go past max_iters, just return min_lr
+    if it > config.max_iters:
+        return min_lr
+    
+    decay_ratio = (it - config.warmup_iters) / (config.max_iters - config.warmup_iters)
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # ranges 0..1
+    return config.min_lr + coeff * (config.max_lr - config.min_lr)
+    
