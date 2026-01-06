@@ -1,9 +1,9 @@
 import torch
-from NanoGPT import NanoGPT
+from KarpathyLectures.src.NanoGPT import NanoGPT
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from utils import get_batch,estimate_loss,custom_tokenizer,get_lr
+from KarpathyLectures.src.utils import get_batch,estimate_loss,custom_tokenizer,get_lr
 torch.manual_seed(42)
 from tqdm.notebook import tqdm, trange 
 

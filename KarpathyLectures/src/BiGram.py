@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from utils import get_batch,estimate_loss,custom_tokenizer
+from KarpathyLectures.src.utils import get_batch,estimate_loss,custom_tokenizer
 torch.manual_seed(42)
 
 @dataclass

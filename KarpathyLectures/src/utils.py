@@ -64,7 +64,7 @@ def get_lr(it,config):
     
     # 2. If we go past max_iters, just return min_lr
     if it > config.max_iters:
-        return min_lr
+        return config.min_lr
     
     decay_ratio = (it - config.warmup_iters) / (config.max_iters - config.warmup_iters)
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # ranges 0..1
